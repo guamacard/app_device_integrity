@@ -26,23 +26,34 @@ class AppDeviceIntegrityPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
   }
 
   override fun onMethodCall(call: MethodCall, result: Result) {
-    if (call.method == "getAttestationServiceSupport") {
-      var challenge: String?
-      if (call.argument<Long>("gcp") != null) {
-        challenge = call.argument<String>("challengeString").toString()
-        var attestation: AppDeviceIntegrity = AppDeviceIntegrity(context,call.argument<Long>("gcp")!!)
-        attestation.integrityTokenResponse.addOnSuccessListener { response ->
-          val integrityToken: String = response.token()
-          result.success(integrityToken.toString())
-        }.addOnFailureListener { e ->
-          println("integrityToken Error:="+e)
-//                    result.error()
-        }
-
-      }
-    } else {
+    if (call.method != "getAttestationServiceSupport") {
       result.notImplemented()
+      return
     }
+
+    val gcp = call.argument<Long>("gcp")
+    if (gcp == null) {
+      result.error(
+        "MISSING_GCP",
+        "GCP Project ID is required for Play Integrity",
+        null,
+      )
+      return
+    }
+
+    val attestation = AppDeviceIntegrity(context, gcp)
+    attestation.integrityTokenResponse
+      .addOnSuccessListener { response ->
+        result.success(response.token())
+      }
+      .addOnFailureListener { error ->
+        // Sin esto el Future de Dart no termina y el splash se queda cargando.
+        result.error(
+          "INTEGRITY_REQUEST_FAILED",
+          error.message ?: "Play Integrity request failed",
+          error.javaClass.simpleName,
+        )
+      }
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
